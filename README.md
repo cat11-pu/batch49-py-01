@@ -1,0 +1,9 @@
+两台机器的过滤告警同时响起：一台机器上同一进程反复触发过滤拦截，档位却一直停在一级，直到人工巡检才发现阈值配置没生效；另一台在演练复位后又立刻自动升级，值班员以为复位没生效，反复操作把窗口清空；还有一台重启后所有档位归零，之前压住的告警全部回来，早班的处置记录对不上。更麻烦的是进程在升级瞬间 fork，子进程一半严一半宽；事件时间戳来自不同 CPU，滑窗时而多算时而少算。监控大盘上的档位与导出数据也对不上，交接班时谁也说不清上一班到底升到了第几档。范围是 gsb/batch49-py-safety-a-30 的 syscall_filter_tripwire.py，类 SyscallFilterTripwire，按进程、profile、syscall 三维聚合拦截事件并逐档升严。
+
+公开接口：SyscallFilterTripwire(window=5.0, thresholds=None, event_capacity=64, process_capacity=16, profile_capacity=8, dedupe_capacity=128, clock=None)；record(event, now=None) 记录事件并返回接受结果与档位；level(pid=None, start_time=None, profile=None) 查询档位；threshold(level) 与 set_threshold(level, count) 读写阈值；admit(pid=None, start_time=None, profile=None) 判断新任务准入；reset(operator, reason, pid=None, start_time=None, profile=None) 人工复位；counts(pid=None, start_time=None, profile=None) 返回计数；export() 导出；snapshot()/restore(state) 保存恢复；persist(path)/load(path) 落盘；stats() 返回计数。拒绝统一抛 TripwireError(code, detail)。事件字段固定为 event_id、pid、start_time、profile、syscall、ts。
+
+故障与边界：①按 pid 与 start_time 组合区分进程，pid 复用不得并账；②滑动窗口外的旧事件不参与计数，窗口按事件时间统一推进；③同一 event_id 只计一次，去重表有容量上限；④升级一次只升一档不跳档，不因窗口清空自动降档；⑤profile 升到二级及以上后新任务准入被拒，已绑定任务继续但每次违规照常记录；⑥reset 必须同时给 operator 与 reason，缺一个抛 RESET_INVALID，复位清空对应窗口与档位并计一次；⑦自动升级与 reset 并发时只能一个生效，计数与切档在同一临界区完成；⑧触发升级的那条事件按新档计入 events_by_level；⑨单进程缓冲超过 process_capacity 丢最旧并计 dropped，profile 数超过 profile_capacity 抛 PROFILE_CAPACITY；⑩export 含 profiles、levels、process_levels、events_by_level、escalations、resets、window_remaining、dropped；⑪persist/load 把档位、窗口事件与去重表落盘恢复，重启后档位保持；⑫快照深拷贝，restore 非法抛 STATE_INVALID 且状态不变；stats 固定返回 events、escalations、resets、denied、dropped、rejected。
+
+还有三条必须写清楚：进程在升级瞬间 fork 时，子进程继承哪一档必须明确，不能一半严一半宽；事件时间戳来自不同 CPU 时钟，窗口按事件时间还是接收时间必须统一；reset 后同一秒内旧事件仍在缓冲时，不能立刻再次触发升级。
+
+硬约束：计数与切档必须原子，切档后事件按新档记录；持久化重启后档位、窗口与去重表一致；单进程缓冲、profile 数与事件 ID 表都有硬顶，超限按丢弃或拒绝处理。阈值修改只影响之后的新事件，不追溯已计入窗口的旧事件；导入非法状态时必须整体拒绝，不能只恢复一半。验收：python3 -m pytest -q tests 15 条全过；不得改测试、跳过或按固定输入写死；并发与恢复自行验证；只做本地实现。
