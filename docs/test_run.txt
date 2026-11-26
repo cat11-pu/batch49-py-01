@@ -1,0 +1,53 @@
+# 跑测记录
+
+时间: 2026-11-26 08:29:00 +0800
+Python: Python 3.14.4（系统解释器未装 pytest，通过 uv 提供 pytest 运行同一命令）
+
+## 1. 验收命令：python3 -m pytest -q tests（经 uv run 注入 pytest）
+$ uv run --with pytest python3 -m pytest -q tests
+...............                                                          [100%]
+15 passed in 0.01s
+
+## 2. 到期扫描 / 边界 / 并发 / 重启补收等额外场景自检（临时脚本，不在 tests/ 内）
+$ PYTHONPATH=. uv run --with pytest python3 /tmp/verify_waiver.py
+ok: boundary sweep reaps at exact expiry
+ok: same-ms new request not reaped by boundary scan
+ok: new waiver still active
+ok: new waiver still allowing
+ok: batch first sweep caps at 2
+ok: batch second sweep takes rest
+ok: batch final sweep empty
+ok: decisions restored
+ok: effective of removed profile empty
+ok: orphan sweep reaps before expiry
+ok: orphan marked expired
+ok: orphan counted in expired stats
+ok: remove unknown profile no error
+ok: sweep first reaps once
+ok: revoke after sweep invalid
+ok: sweep after revoke is no-op
+ok: double revoke invalid
+ok: 50 rounds concurrency: exactly one reclaim each
+ok: serial double revoke invalid
+ok: effective copy isolated
+ok: find rows are frozen dataclasses
+ok: snapshot copy isolated
+ok: snapshot has three parts
+ok: waiver survives replacement
+ok: replacement base kept
+ok: revoke only strips own allow
+ok: renew limit code
+ok: re-request gets fresh id
+ok: fresh waiver active
+ok: restore counts
+ok: no expired waiver still allowing after restart
+ok: restored stat recorded
+ok: expired stat recorded on boot sweep
+ok: orphan swept on restore
+ok: orphan no allowance
+ok: capacity code
+ok: capacity counts only active
+ok: pending expiry approve rejected
+ok: ids never reused across restore
+
+all extra checks passed
